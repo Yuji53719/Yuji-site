@@ -1,16 +1,40 @@
+import "../js/auth.js";
+import "../js/font.js";
 import { thoughts as authoredThoughts } from "../data/thoughtData.js";
 import { thoughtCard } from "../components/ThoughtCard.js";
-import { toggleLike } from "../components/LikeButton.js";
+import { toggleLike, deleteThought, fetchThoughts } from "../js/cloudData.js";
+import { toggleLike as toggleLocalLike } from "../components/LikeButton.js";
 import { mountDeleteConfirmModal, confirmDelete } from "../components/DeleteConfirmModal.js";
-import { bindCommentInteractions, mountCommentComposer } from "../components/CommentSection.js";
+import { bindCommentInteractions, mountCommentComposer, primeComments } from "../components/CommentSection.js";
+
 const submitLink = document.querySelector('.upload-link[href="./upload-thought.html"]');
-if (submitLink) { submitLink.textContent = "投稿"; submitLink.classList.add("submit-thought"); const submitStyle = document.createElement("style"); submitStyle.textContent = ".submit-thought{display:inline-block;border:0!important;border-radius:999px;background:#245fa8;color:#fff!important;padding:11px 18px;font-weight:bold;box-shadow:0 14px 36px rgb(25 71 132 / .10);transition:transform .2s}.submit-thought:hover{transform:translateY(-2px)}@media(prefers-color-scheme:dark){.submit-thought{background:#85b9f6;color:#1b2028!important}}.comments{padding:0;border:0;background:transparent}.comments h3{margin:0 0 16px}.comment-list{display:grid;gap:12px}.comment{padding:18px;border:1px solid var(--line);border-radius:16px;background:var(--surface);box-shadow:var(--shadow)}.comment-form{margin-top:16px;padding:18px;border:1px solid var(--line);border-radius:16px;background:var(--surface);box-shadow:var(--shadow)}.comment-like{display:inline-flex;align-items:center;gap:5px}.comment-like svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.55;stroke-linecap:round;stroke-linejoin:round}footer{padding:30px 0 42px;color:var(--muted);line-height:1.65}"; document.head.appendChild(submitStyle); }
-const userThoughts = () => JSON.parse(localStorage.getItem("jiayu-user-thoughts") || "[]");
-const deletedThoughts = () => JSON.parse(localStorage.getItem("jiayu-deleted-thoughts") || "[]");
-const render = () => { const removed = deletedThoughts(); document.getElementById("thought-list").innerHTML = [...userThoughts(), ...authoredThoughts].filter(thought => !removed.includes(thought.id)).sort((a,b) => b.publishedAt.localeCompare(a.publishedAt)).map(thoughtCard).join(""); };
-render();
+if (submitLink) { submitLink.textContent = "投稿"; submitLink.classList.add("submit-thought"); const submitStyle = document.createElement("style"); submitStyle.textContent = ".submit-thought{display:inline-block;margin-left:18px;border:0!important;border-radius:999px;background:#245fa8;color:#fff!important;padding:11px 18px;font:inherit;font-weight:bold;cursor:pointer;box-shadow:0 14px 36px rgb(25 71 132 / .10);transition:transform .2s}.submit-thought:hover{transform:translateY(-2px)}@media(prefers-color-scheme:dark){.submit-thought{background:#85b9f6;color:#1b2028!important}}.comments{padding:0;border:0;background:transparent}.comments h3{margin:0 0 16px}.comment-list{display:grid;gap:12px}.comment{padding:18px;border:1px solid var(--line);border-radius:16px;background:var(--surface);box-shadow:var(--shadow)}.comment-form{margin-top:16px;padding:18px;border:1px solid var(--line);border-radius:16px;background:var(--surface);box-shadow:var(--shadow)}.comment-like{display:inline-flex;align-items:center;gap:5px}.comment-like svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.55;stroke-linecap:round;stroke-linejoin:round}footer{padding:30px 0 42px;color:var(--muted);line-height:1.65}"; document.head.appendChild(submitStyle); }
+const userThoughts = () => { try { return JSON.parse(localStorage.getItem("jiayu-user-thoughts") || "[]"); } catch (_) { return []; } };
+const deletedThoughts = () => { try { return JSON.parse(localStorage.getItem("jiayu-deleted-thoughts") || "[]"); } catch (_) { return []; } };
+let visibleThoughts = [];
+
+async function render() {
+  const remote = await fetchThoughts();
+  const removed = deletedThoughts();
+  const local = [...userThoughts(), ...authoredThoughts].filter(thought => !removed.includes(thought.id));
+  const all = [...(remote || []), ...local];
+  visibleThoughts = all.sort((first, second) => String(second.createdAt || second.publishedAt).localeCompare(String(first.createdAt || first.publishedAt)));
+  await Promise.all(visibleThoughts.map(thought => primeComments("thought", thought.id)));
+  document.getElementById("thought-list").innerHTML = visibleThoughts.map(thoughtCard).join("");
+}
+
 const deleteModal = mountDeleteConfirmModal("delete-thought-modal", { title: "打包扔掉？", cancel: "拆開垃圾袋", confirm: "扔進垃圾桶" });
 const deleteCommentModal = mountDeleteConfirmModal("delete-comment-modal", { title: "剪掉新枝？", cancel: "恣意生長", confirm: "咔嚓" });
 mountCommentComposer();
 bindCommentInteractions(render, () => confirmDelete(deleteCommentModal));
-document.getElementById("thought-list").addEventListener("click", async event => { const button = event.target.closest("[data-like]"); if (button) { toggleLike(button.dataset.like); render(); return; } const deleteButton = event.target.closest("[data-delete]"); if (!deleteButton || !(await confirmDelete(deleteModal))) return; const removed = deletedThoughts(); localStorage.setItem("jiayu-deleted-thoughts", JSON.stringify([...removed, deleteButton.dataset.delete])); render(); });
+document.getElementById("thought-list").addEventListener("click", async event => {
+  const button = event.target.closest("[data-like]");
+  if (button) { if (button.dataset.likeCloud === "true") await toggleLike("thought", button.dataset.like); else toggleLocalLike(button.dataset.like); await render(); return; }
+  const deleteButton = event.target.closest("[data-delete]");
+  if (!deleteButton || !(await confirmDelete(deleteModal))) return;
+  const thought = visibleThoughts.find(item => item.id === deleteButton.dataset.delete);
+  if (thought && thought._cloud) await deleteThought(thought.id); else { const removed = deletedThoughts(); localStorage.setItem("jiayu-deleted-thoughts", JSON.stringify([...removed, deleteButton.dataset.delete])); }
+  await render();
+});
+window.addEventListener("jiayu-auth-change", render);
+render();
