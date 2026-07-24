@@ -1,0 +1,45 @@
+import { supportsDialog } from "../utils/browserCompatibility.js";
+
+const maxReplyDepth = 5;
+const ginkgo = `<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 28V15M16 15C10 7 4 7 4 13c0 5 6 6 12 2M16 15c6-8 12-8 12-2 0 5-6 6-12 2"/></svg>`;
+const escapeHtml = value => String(value || "").replace(/[&<>'"]/g, character => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", "'":"&#39;", '"':"&quot;" })[character]);
+const displayDate = value => { const date = new Date(`${String(value).slice(0, 10)}T00:00:00`); return `${date.getFullYear()}年${String(date.getMonth() + 1).padStart(2, "0")}月${String(date.getDate()).padStart(2, "0")}日`; };
+const keyFor = (kind, identifier) => kind === "thought" ? `jiayu-comments-${identifier}` : `jiayu-memory-comments-${identifier}`;
+const readComments = (kind, identifier) => { try { return JSON.parse(localStorage.getItem(keyFor(kind, identifier)) || "[]"); } catch (_) { return []; } };
+const writeComments = (kind, identifier, comments) => localStorage.setItem(keyFor(kind, identifier), JSON.stringify(comments));
+const pathValue = path => path.split(".").map(Number);
+const commentButton = (kind, identifier, path = "") => `<button class="comment-trigger" type="button" data-comment-open data-comment-kind="${kind}" data-comment-id="${identifier}" data-comment-parent="${path}">留言</button>`;
+
+function nodeAt(comments, path) { return pathValue(path).reduce((node, index, depth) => depth === 0 ? node[index] : (node.replies || [])[index], comments); }
+function commentNodeMarkup(node, kind, identifier, path, depth) {
+  const replies = node.replies || [];
+  const isRoot = depth === 0;
+  return `<article class="${isRoot ? "comment" : "reply-card"}" style="--reply-depth:${depth}"><div class="comment-head"><div class="comment-meta"><b>${escapeHtml(node.name || "匿名")}</b><time>${displayDate(node.createdAt || new Date().toISOString())}</time></div><div class="comment-actions"><button class="comment-like${node.liked ? " liked" : ""}" type="button" aria-pressed="${Boolean(node.liked)}" data-comment-like data-comment-kind="${kind}" data-comment-id="${identifier}" data-comment-path="${path}">${ginkgo}<span>喜歡</span></button>${depth < maxReplyDepth ? commentButton(kind, identifier, path) : ""}<button class="comment-delete" type="button" data-comment-delete data-comment-kind="${kind}" data-comment-id="${identifier}" data-comment-path="${path}" aria-label="刪除留言">刪除</button></div></div><p>${escapeHtml(node.text)}</p>${replies.length ? `<div class="reply-list">${replies.map((reply, index) => commentNodeMarkup(reply, kind, identifier, `${path}.${index}`, depth + 1)).join("")}</div>` : ""}</article>`;
+}
+function commentsMarkup(kind, identifier) {
+  const comments = readComments(kind, identifier);
+  return `<section class="comments shared-comments" data-comment-section="${identifier}"><h3>留言 <small>${comments.length}</small></h3><div class="comment-list">${comments.length ? comments.map((comment, index) => commentNodeMarkup(comment, kind, identifier, String(index), 0)).join("") : `<p class="empty">還沒有留言，說點什麼吧。</p>`}</div></section>`;
+}
+
+export function articleCommentButton(kind, identifier) { return commentButton(kind, identifier); }
+export function commentSection(kind, identifier) { return commentsMarkup(kind, identifier); }
+
+export function mountCommentComposer() {
+  if (document.getElementById("comment-composer")) return;
+  document.head.insertAdjacentHTML("beforeend", `<style>.empty[hidden]{display:none!important}.thought-primary-actions{display:flex;align-items:center;gap:18px}.thought-primary-actions .comment-trigger{font-size:16px;padding:10px 2px}.comment-trigger{border:0;border-bottom:1px solid currentColor;background:transparent;color:var(--blue);padding:7px 2px;font:inherit;font-size:14px;cursor:pointer;transition:transform .2s}.comment-trigger:hover{transform:translateY(-1px)}.shared-comments{margin-top:36px;padding:0!important;border:0!important;background:transparent!important}.comment-list{display:grid;gap:12px}.comment,.reply-card,.comment-composer-form{border:1px solid var(--line);border-radius:16px;background:var(--surface);box-shadow:var(--shadow)}.comment{padding:18px}.reply-list{display:grid;gap:9px;margin:14px 0 0 min(28px,5vw)}.reply-card{padding:14px}.comment-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}.comment-meta b{display:block;font-size:17px}.comment-meta time{display:block;margin-top:4px;color:var(--muted);font-size:13px}.comment-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}.comment-like{display:inline-flex;align-items:center;gap:5px;border:0;background:transparent;color:var(--blue);padding:7px 2px;font:inherit;font-size:14px;cursor:pointer}.comment-like.liked{color:var(--accent);font-weight:bold}.comment-like svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.55;stroke-linecap:round;stroke-linejoin:round}.comment-delete{border:0;background:transparent;color:var(--red);padding:7px 2px;font:inherit;font-size:14px;cursor:pointer}.comment p,.reply-card p{margin:13px 0 0;font-size:15px;line-height:1.65}.comment-composer{width:min(500px,calc(100% - 30px));border:0;background:transparent;color:var(--ink);padding:0;box-shadow:none}.comment-composer::backdrop{background:rgb(8 18 38 / .45)}.comment-composer h2{margin:0 0 8px;font-size:29px}.comment-composer-form{display:grid;gap:10px;padding:18px}.comment-composer input,.comment-composer textarea{width:100%;border:1px solid var(--line);border-radius:12px;background:transparent;color:var(--ink);padding:11px;font:inherit}.comment-composer textarea{min-height:120px;resize:vertical}.comment-composer-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px}.comment-composer-actions button{border:1px solid var(--line);border-radius:12px;background:transparent;color:var(--ink);padding:12px;font:inherit;cursor:pointer}.comment-composer-actions .send-comment{border-color:var(--blue);background:var(--blue);color:#fff}@media(max-width:560px){.comment{padding:15px}.reply-list{margin-left:10px}.comment-actions{gap:6px}.comment-composer-form{padding:16px}}</style>`);
+  document.body.insertAdjacentHTML("beforeend", `<dialog class="comment-composer" id="comment-composer"><form class="comment-composer-form" method="dialog"><h2 id="comment-composer-title">留下留言</h2><input name="name" maxlength="20" placeholder="你的名稱" required><textarea name="text" maxlength="300" placeholder="寫下留言…" required></textarea><div class="comment-composer-actions"><button value="cancel" formnovalidate>暫時不說</button><button class="send-comment" value="confirm">發送留言</button></div></form></dialog>`);
+}
+
+export function bindCommentInteractions(onUpdate, confirmRemoval) {
+  const composer = document.getElementById("comment-composer");
+  document.addEventListener("click", async event => {
+    const openButton = event.target.closest("[data-comment-open]");
+    if (openButton) { composer.dataset.kind = openButton.dataset.commentKind; composer.dataset.identifier = openButton.dataset.commentId; composer.dataset.parent = openButton.dataset.commentParent || ""; composer.querySelector("#comment-composer-title").textContent = composer.dataset.parent === "" ? "留下留言" : "回覆留言"; composer.querySelector("form").reset(); if (supportsDialog()) composer.showModal(); else { const text = window.prompt("寫下留言…"); if (text) saveComposerComment(composer, "匿名", text); } return; }
+    const likeButton = event.target.closest("[data-comment-like]");
+    if (likeButton) { const comments = readComments(likeButton.dataset.commentKind, likeButton.dataset.commentId); const target = nodeAt(comments, likeButton.dataset.commentPath); if (target) { target.liked = !target.liked; writeComments(likeButton.dataset.commentKind, likeButton.dataset.commentId, comments); onUpdate(); } return; }
+    const deleteButton = event.target.closest("[data-comment-delete]");
+    if (deleteButton && await confirmRemoval()) { const comments = readComments(deleteButton.dataset.commentKind, deleteButton.dataset.commentId); const path = pathValue(deleteButton.dataset.commentPath); const index = path.pop(); const list = path.length ? (nodeAt(comments, path.join(".")).replies || []) : comments; list.splice(index, 1); writeComments(deleteButton.dataset.commentKind, deleteButton.dataset.commentId, comments); onUpdate(); }
+  });
+  composer.addEventListener("close", () => { if (composer.returnValue !== "confirm") return; const form = composer.querySelector("form"); saveComposerComment(composer, form.elements.name.value.trim(), form.elements.text.value.trim()); });
+  function saveComposerComment(dialog, name, text) { if (!text) return; const comments = readComments(dialog.dataset.kind, dialog.dataset.identifier); const entry = { name: name || "匿名", text, createdAt: new Date().toISOString(), replies: [] }; if (dialog.dataset.parent === "") comments.push(entry); else { const parent = nodeAt(comments, dialog.dataset.parent); if (parent) { parent.replies = parent.replies || []; parent.replies.push(entry); } } writeComments(dialog.dataset.kind, dialog.dataset.identifier, comments); onUpdate(); }
+}

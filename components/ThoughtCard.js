@@ -1,0 +1,7 @@
+import { likeButton } from "./LikeButton.js";
+import { deleteThoughtButton } from "./DeleteThoughtButton.js";
+import { articleCommentButton, commentSection } from "./CommentSection.js";
+const date = value => new Date(`${value}T00:00:00`).toLocaleDateString("zh-Hant", { year: "numeric", month: "2-digit", day: "2-digit" });
+const escape = value => value.replace(/[&<>'"]/g, char => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", "'":"&#39;", '"':"&quot;" })[char]);
+export const sanitise = value => { const template = document.createElement("template"); template.innerHTML = value; template.content.querySelectorAll("script,style,iframe,object").forEach(node => node.remove()); template.content.querySelectorAll("*").forEach(node => [...node.attributes].forEach(attribute => { if (attribute.name.startsWith("on") || attribute.name === "style") node.removeAttribute(attribute.name); })); return template.innerHTML; };
+export function thoughtCard(thought) { return `<article class="thought" data-id="${thought.id}"><p class="date">${date(thought.publishedAt)}</p><h2>${escape(thought.title || "未命名")}</h2><div class="thought-content">${sanitise(thought.content)}</div><p class="author">${escape(thought.author)} · ${date(thought.publishedAt)}</p><div class="thought-actions"><div class="thought-primary-actions">${likeButton(thought)}${articleCommentButton("thought", thought.id)}</div>${deleteThoughtButton(thought.id)}</div>${commentSection("thought", thought.id)}</article>`; }
