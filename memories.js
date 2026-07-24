@@ -1,3 +1,4 @@
+import "./auth.js";
 import "./font.js";
 import { createIdentifier, supportsDialog } from "../utils/browserCompatibility.js";
 import { articleCommentButton, bindCommentInteractions, commentSection, mountCommentComposer } from "../components/CommentSection.js";

@@ -1,3 +1,4 @@
+import "../js/auth.js";
 import "../js/font.js";
 import { thoughtEditor, bindEditor } from "../components/ThoughtEditor.js";
 import { createIdentifier } from "../utils/browserCompatibility.js";

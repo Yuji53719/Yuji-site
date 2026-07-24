@@ -1,3 +1,4 @@
+import "../js/auth.js";
 import "../js/font.js";
 import { thoughts as authoredThoughts } from "../data/thoughtData.js";
 import { thoughtCard } from "../components/ThoughtCard.js";
