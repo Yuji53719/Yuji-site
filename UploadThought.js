@@ -1,0 +1,5 @@
+import "../js/font.js";
+import { thoughtEditor, bindEditor } from "../components/ThoughtEditor.js";
+import { createIdentifier } from "../utils/browserCompatibility.js";
+const form = document.getElementById("upload-form"); document.getElementById("editor-shell").innerHTML = thoughtEditor(); bindEditor(document.getElementById("editor-shell"));
+form.addEventListener("submit", event => { event.preventDefault(); const data = new FormData(form); const content = document.querySelector("[data-editor]").innerHTML.trim(); if (!content) return; const now = new Date(); const saved = JSON.parse(localStorage.getItem("jiayu-user-thoughts") || "[]"); saved.push({ id: createIdentifier(), author: data.get("author").trim(), title: data.get("title").trim(), content, publishedAt: now.toISOString().slice(0,10), createdAt: now.toISOString() }); localStorage.setItem("jiayu-user-thoughts", JSON.stringify(saved)); location.href = "./thoughts.html"; });
