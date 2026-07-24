@@ -1,0 +1,3 @@
+const maple = `<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 28V19M16 19l-5 3 1-6-6 1 4-5-4-3 6-1-1-6 5 4 5-4-1 6 6 1-4 3 4 5-6-1 1 6-5-3"/></svg>`;
+export function likeButton(thought) { const key = `jiayu-liked-${thought.id}`; const liked = thought._cloud ? Boolean(thought._liked) : localStorage.getItem(key) === "true"; return `<button class="like-button ${liked ? "liked" : ""}" type="button" aria-pressed="${liked}" data-like="${thought.id}" data-like-cloud="${Boolean(thought._cloud)}">${maple}<span>${liked ? "已喜歡" : "喜歡"}</span></button>`; }
+export function toggleLike(identifier) { const key = `jiayu-liked-${identifier}`; const liked = localStorage.getItem(key) === "true"; localStorage.setItem(key, String(!liked)); }

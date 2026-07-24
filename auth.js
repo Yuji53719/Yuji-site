@@ -21,4 +21,4 @@ dialog.querySelector("#auth-form").addEventListener("submit", async event => { e
 
 addLoginButton();
 supabase.auth.getUser().then(({ data: { user } }) => renderUser(user));
-supabase.auth.onAuthStateChange((_event, session) => { renderUser(session && session.user); if (session && session.user && dialog.open) dialog.close(); });
+supabase.auth.onAuthStateChange((_event, session) => { renderUser(session && session.user); if (session && session.user && dialog.open) dialog.close(); window.dispatchEvent(new Event("jiayu-auth-change")); });
