@@ -15,6 +15,10 @@ export async function fetchMemories() {
   try { return await request("?type=memories"); } catch (error) { console.warn(error.message); return null; }
 }
 
+export async function fetchSeries() {
+  try { return await request("?type=series"); } catch (error) { console.warn(error.message); return null; }
+}
+
 export async function fetchProfile() {
   return await request("?type=profile");
 }
@@ -40,6 +44,11 @@ export async function createMemory({ date, note, story, files }) {
   for (const [position, file] of files.entries()) {
     await request(`?action=memory-image&memoryId=${encodeURIComponent(memory.id)}&position=${position}`, { method: "POST", headers: { "Content-Type": file.type || "application/octet-stream", "X-File-Name": encodeURIComponent(file.name) }, body: file });
   }
+}
+
+export async function createSeries({ title, content, cover }) {
+  const post = await request("", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "series", title, content }) });
+  if (cover) await request(`?action=series-cover&postId=${encodeURIComponent(post.id)}`, { method: "POST", headers: { "Content-Type": cover.type || "application/octet-stream", "X-File-Name": encodeURIComponent(cover.name) }, body: cover });
 }
 
 export async function deleteThought(id) {
