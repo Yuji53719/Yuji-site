@@ -77,6 +77,9 @@ function adminCookie(value, maxAge) {
 
 function supabaseHeaders(extra = {}) {
   const key = required("SUPABASE_SERVICE_ROLE_KEY");
+  if (key.startsWith("sb_publishable_")) {
+    throw new Error("SUPABASE_SERVICE_ROLE_KEY 不能使用 Publishable key，請在部署平台設定 Supabase 的 secret／service_role key。");
+  }
   if (key.startsWith("sb_secret_")) return { apikey: key, ...extra };
   return { apikey: key, Authorization: `Bearer ${key}`, ...extra };
 }
@@ -87,7 +90,18 @@ async function supabase(path, options = {}) {
     headers: supabaseHeaders(options.headers || {})
   });
   const text = await response.text();
-  if (!response.ok) throw new Error(text || `Supabase 錯誤 ${response.status}`);
+  if (!response.ok) {
+    let message = text;
+    try {
+      const payload = JSON.parse(text);
+      if (payload?.code === "42501") {
+        message = "Supabase 資料表權限尚未完成設定。請在 Supabase SQL Editor 執行專案內的 supabase-permissions.sql。";
+      } else {
+        message = payload?.message || text;
+      }
+    } catch (_) { /* 保留原始非 JSON 錯誤 */ }
+    throw new Error(message || `Supabase 錯誤 ${response.status}`);
+  }
   return text ? JSON.parse(text) : null;
 }
 
