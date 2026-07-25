@@ -106,24 +106,23 @@ async function createStoredAccount({ username, password, role = "editor", displa
 }
 
 async function authenticateAccount(username, password) {
-  let stored = null;
-  try { stored = await storedAccounts(); } catch (error) { console.error("Stored account lookup failed; falling back to configured accounts.", error); }
-  if (stored?.length) {
-    const account = stored.find(candidate => candidate.username === username && candidate.is_active && passwordMatches(password, candidate.password_hash));
-    return account ? { username: account.username, role: account.role, displayName: account.display_name } : null;
-  }
-  const legacy = legacyAccounts().find(candidate => {
+  let legacy = [];
+  try { legacy = legacyAccounts(); } catch (error) { console.error("Configured account lookup failed.", error); }
+  const configured = legacy.find(candidate => {
     const enteredUsername = Buffer.from(username);
     const expectedUsername = Buffer.from(candidate.username);
     const enteredPassword = Buffer.from(password);
     const expectedPassword = Buffer.from(candidate.password);
     return enteredUsername.length === expectedUsername.length && enteredPassword.length === expectedPassword.length && crypto.timingSafeEqual(enteredUsername, expectedUsername) && crypto.timingSafeEqual(enteredPassword, expectedPassword);
   });
-  if (!legacy) return null;
-  if (stored !== null && legacy.role === "admin") {
-    try { await createStoredAccount({ username: legacy.username, password: legacy.password, role: "admin", displayName: legacy.displayName }); } catch (error) { console.error("Stored admin migration failed.", error); }
+  if (configured) return { username: configured.username, role: configured.role, displayName: configured.displayName };
+  let stored = null;
+  try { stored = await storedAccounts(); } catch (error) { console.error("Stored account lookup failed; falling back to configured accounts.", error); }
+  if (stored?.length) {
+    const account = stored.find(candidate => candidate.username === username && candidate.is_active && passwordMatches(password, candidate.password_hash));
+    return account ? { username: account.username, role: account.role, displayName: account.display_name } : null;
   }
-  return { username: legacy.username, role: legacy.role, displayName: legacy.displayName };
+  return null;
 }
 
 async function adminAuthorId() {

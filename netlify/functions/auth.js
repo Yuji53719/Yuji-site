@@ -17,6 +17,8 @@ exports.handler = async event => {
     return json(200, { user: { username: account.username, role: account.role, displayName: account.displayName } }, { ...headers, "Set-Cookie": adminCookie(sessionCookie(account), 60 * 60 * 24 * 14) });
   } catch (error) {
     console.error("Auth function failed", error);
-    return json(500, { error: "登入服務設定或連線異常，請聯絡網站管理員檢查 Netlify 環境變數。" }, headers);
+    const message = String(error.message || "");
+    const safeError = message.includes("SESSION_SECRET") ? "登入服務尚未設定 SESSION_SECRET。" : message.includes("SITE_ACCOUNTS_JSON") || message.includes("ADMIN_USERNAME") ? "登入服務尚未設定管理帳號。" : "登入服務暫時無法使用，請稍後再試。";
+    return json(500, { error: safeError }, headers);
   }
 };
