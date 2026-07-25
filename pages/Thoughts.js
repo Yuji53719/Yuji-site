@@ -2,6 +2,7 @@ import "../js/font.js";
 import { thoughts as authoredThoughts } from "../data/thoughtData.js";
 import { thoughtCard } from "../components/ThoughtCard.js";
 import { fetchThoughts } from "../js/cloudData.js";
+import { addAdminControls, isAdmin } from "../js/auth.js";
 
 const userThoughts = () => { try { return JSON.parse(localStorage.getItem("jiayu-user-thoughts") || "[]"); } catch (_) { return []; } };
 
@@ -13,3 +14,6 @@ async function render() {
 }
 
 render();
+
+isAdmin().then(admin => { if (admin) document.getElementById("upload-thought-link")?.classList.add("is-admin"); });
+addAdminControls();

@@ -1,5 +1,6 @@
 import "./font.js";
-import { fetchMemories } from "./cloudData.js";
+import { createMemory, fetchMemories } from "./cloudData.js";
+import { addAdminControls, isAdmin } from "./auth.js";
 
 const storageKey = "jiayu-memories";
 const grid = document.getElementById("memory-grid");
@@ -9,6 +10,7 @@ let memories = [];
 let detailMemory = null;
 let detailIndex = 0;
 let touchStartX = 0;
+let selectedFiles = [];
 
 function loadLocal() { try { return JSON.parse(localStorage.getItem(storageKey) || "[]"); } catch (_) { return []; } }
 function escapeHtml(value) { return String(value || "").replace(/[&<>'"]/g, character => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", "'":"&#39;", '"':"&quot;" })[character]); }
@@ -63,4 +65,39 @@ document.getElementById("previous-image").addEventListener("click", () => moveDe
 document.getElementById("next-image").addEventListener("click", () => moveDetail(1));
 detailModal.addEventListener("touchstart", event => { touchStartX = event.touches[0].clientX; }, { passive: true });
 detailModal.addEventListener("touchend", event => { const delta = event.changedTouches[0].clientX - touchStartX; if (Math.abs(delta) > 45) moveDetail(delta < 0 ? 1 : -1); });
+
+const extractButton = document.getElementById("extract-memory");
+const fileInput = document.getElementById("memory-files");
+const editor = document.getElementById("memory-editor");
+const today = new Date();
+document.getElementById("memory-date").value = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+
+extractButton.addEventListener("click", () => fileInput.click());
+fileInput.addEventListener("change", () => {
+  selectedFiles = [...fileInput.files];
+  if (!selectedFiles.length) return;
+  document.getElementById("selected-files").textContent = `已選擇 ${selectedFiles.length} 張照片`;
+  editor.showModal();
+});
+document.getElementById("memory-form").addEventListener("submit", async event => {
+  event.preventDefault();
+  const message = document.getElementById("memory-message");
+  message.textContent = "正在保存照片……";
+  try {
+    await createMemory({
+      date: document.getElementById("memory-date").value,
+      note: document.getElementById("memory-note").value.trim(),
+      story: document.getElementById("memory-story").value.trim(),
+      files: selectedFiles
+    });
+    editor.close();
+    fileInput.value = "";
+    selectedFiles = [];
+    event.target.reset();
+    await refresh();
+  } catch (error) { message.textContent = `無法保存：${error.message}`; }
+});
+
+isAdmin().then(admin => { if (admin) extractButton.classList.add("is-admin"); });
+addAdminControls();
 refresh();
