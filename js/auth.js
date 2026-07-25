@@ -1,7 +1,5 @@
 import { supabase } from "./supabaseClient.js";
 
-export const adminEmail = "yuji53728@icloud.com";
-
 export async function getSession() {
   const { data } = await supabase.auth.getSession();
   return data.session;
@@ -9,7 +7,13 @@ export async function getSession() {
 
 export async function isAdmin() {
   const session = await getSession();
-  return session?.user?.email?.toLowerCase() === adminEmail;
+  if (!session?.user) return false;
+  const { data } = await supabase
+    .from("profiles")
+    .select("is_admin")
+    .eq("id", session.user.id)
+    .maybeSingle();
+  return data?.is_admin === true;
 }
 
 export async function requireAdmin() {
@@ -19,7 +23,7 @@ export async function requireAdmin() {
 }
 
 function modal() {
-  return `<dialog class="admin-login" id="admin-login"><form method="dialog" class="admin-login-card"><button class="admin-close" value="cancel" aria-label="關閉">×</button><p class="admin-eyebrow">管理員</p><h2>登入後整理花園</h2><label>電子郵件<input id="admin-email" type="email" autocomplete="email" required value="${adminEmail}"></label><label>密碼<input id="admin-password" type="password" autocomplete="current-password" required></label><p class="admin-error" id="admin-error" role="alert"></p><button class="admin-submit" id="admin-submit" type="submit">登入</button></form></dialog>`;
+  return `<dialog class="admin-login" id="admin-login"><form method="dialog" class="admin-login-card"><button class="admin-close" value="cancel" aria-label="關閉">×</button><p class="admin-eyebrow">管理員</p><h2>登入後整理花園</h2><label>電子郵件<input id="admin-email" type="email" autocomplete="email" required></label><label>密碼<input id="admin-password" type="password" autocomplete="current-password" required></label><p class="admin-error" id="admin-error" role="alert"></p><button class="admin-submit" id="admin-submit" type="submit">登入</button></form></dialog>`;
 }
 
 function style() {
@@ -37,11 +41,15 @@ export function addAdminControls() {
   dialog.querySelector("form").addEventListener("submit", async event => {
     event.preventDefault();
     error.textContent = "";
-    const email = document.getElementById("admin-email").value.trim().toLowerCase();
+    const email = document.getElementById("admin-email").value.trim();
     const password = document.getElementById("admin-password").value;
-    if (email !== adminEmail) { error.textContent = "此帳號沒有管理權限。"; return; }
     const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
     if (signInError) { error.textContent = "登入失敗，請確認電子郵件與密碼。"; return; }
+    if (!await isAdmin()) {
+      await supabase.auth.signOut();
+      error.textContent = "此帳號沒有管理權限。";
+      return;
+    }
     window.location.reload();
   });
 
