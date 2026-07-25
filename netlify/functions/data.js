@@ -31,6 +31,11 @@ async function readProfile() {
   return rows[0] || { content: "", updated_at: null };
 }
 
+async function readSeries() {
+  const posts = await supabase("/rest/v1/series_posts?select=id,title,content,cover_path,published_at,created_at,author_username,author_name&order=published_at.desc,created_at.desc");
+  return posts.map(post => ({ id: post.id, title: post.title, content: post.content || "", cover: post.cover_path ? publicImageUrl(post.cover_path) : "", publishedAt: post.published_at, createdAt: post.created_at, author: post.author_name, owner: post.author_username, _cloud: true }));
+}
+
 async function saveProfile(body) {
   const content = String(body.content || "").trim();
   if (!content) throw new Error("介紹不能留空。");
@@ -67,6 +72,27 @@ async function addMemory(body, user) {
   const authorId = await adminAuthorId();
   const memory = await supabase("/rest/v1/memories", { method: "POST", headers: { "Content-Type": "application/json", Prefer: "return=representation" }, body: JSON.stringify({ author_id: authorId, author_username: user.username, author_name: user.displayName, memory_date: body.date, note: String(body.note || ""), story: String(body.story || "") }) });
   return memory[0];
+}
+
+async function addSeries(body, user) {
+  const title = String(body.title || "").trim();
+  const content = String(body.content || "").trim();
+  if (!title || !content) throw new Error("請填寫標題與正文。");
+  const rows = await supabase("/rest/v1/series_posts", { method: "POST", headers: { "Content-Type": "application/json", Prefer: "return=representation" }, body: JSON.stringify({ title, content, author_username: user.username, author_name: user.displayName, published_at: new Date().toISOString().slice(0, 10) }) });
+  return rows[0];
+}
+
+async function addSeriesCover(event, query, user) {
+  const postId = String(query.postId || "");
+  const filename = String(event.headers["x-file-name"] || "cover").replace(/[^a-zA-Z0-9._-]/g, "-");
+  const posts = await supabase(`/rest/v1/series_posts?id=eq.${encodeURIComponent(postId)}&select=id,author_username`);
+  if (!posts[0]) throw new Error("找不到這篇連載。 ");
+  if (user.role !== "admin" && posts[0].author_username !== user.username) throw new Error("你只能上傳自己的連載封面。 ");
+  const path = `series/${postId}/cover-${Date.now()}-${filename}`;
+  const bytes = Buffer.from(event.body || "", event.isBase64Encoded ? "base64" : "utf8");
+  const response = await fetch(`${required("SUPABASE_URL")}/storage/v1/object/memories/${filePath(path)}`, { method: "POST", headers: supabaseHeaders({ "Content-Type": event.headers["content-type"] || "application/octet-stream", "x-upsert": "false" }), body: bytes });
+  if (!response.ok) throw new Error((await response.text()) || "封面上傳失敗。");
+  await supabase(`/rest/v1/series_posts?id=eq.${encodeURIComponent(postId)}`, { method: "PATCH", headers: { "Content-Type": "application/json", Prefer: "return=minimal" }, body: JSON.stringify({ cover_path: path }) });
 }
 
 async function addMemoryImage(event, query, user) {
@@ -131,21 +157,29 @@ exports.handler = async event => {
       if (query.type === "thoughts") return json(200, await readThoughts());
       if (query.type === "memories") return json(200, await readMemories());
       if (query.type === "profile") return json(200, await readProfile());
+      if (query.type === "series") return json(200, await readSeries());
       if (query.type === "comments") return json(200, await readComments(query));
       return json(400, { error: "未知資料類型。" });
     }
     if (event.httpMethod !== "POST") return json(405, { error: "Method not allowed" });
+    if (query.action === "memory-image" || query.action === "series-cover") {
+      const user = currentUser(event);
+      if (!user) return json(401, { error: "請先登入。" });
+      if (query.action === "memory-image") { await addMemoryImage(event, query, user); return json(201, { ok: true }); }
+      await addSeriesCover(event, query, user);
+      return json(201, { ok: true });
+    }
     const body = parse(event);
     if (body.action === "comment") return json(201, await addComment(body));
     const user = currentUser(event);
     if (!user) return json(401, { error: "請先登入。" });
-    if (query.action === "memory-image") { await addMemoryImage(event, query, user); return json(201, { ok: true }); }
     if (body.action === "profile") {
       if (user.role !== "admin") return json(403, { error: "只有管理員可以修改自我介紹。" });
       return json(200, await saveProfile(body));
     }
     if (body.action === "thought") { await addThought(body, user); return json(201, { ok: true }); }
     if (body.action === "memory") return json(201, await addMemory(body, user));
+    if (body.action === "series") return json(201, await addSeries(body, user));
     if (body.action === "delete-thought") { await removeThought(body.id, user); return json(200, { ok: true }); }
     if (body.action === "delete-memory") { await removeMemory(body.id, user); return json(200, { ok: true }); }
     if (body.action === "update-thought") { await updateThought(body, user); return json(200, { ok: true }); }

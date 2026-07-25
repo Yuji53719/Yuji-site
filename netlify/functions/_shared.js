@@ -77,6 +77,7 @@ function adminCookie(value, maxAge) {
 
 function supabaseHeaders(extra = {}) {
   const key = required("SUPABASE_SERVICE_ROLE_KEY");
+  if (key.startsWith("sb_secret_")) return { apikey: key, ...extra };
   return { apikey: key, Authorization: `Bearer ${key}`, ...extra };
 }
 
