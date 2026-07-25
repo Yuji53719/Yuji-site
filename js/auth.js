@@ -6,6 +6,11 @@ function connectionError(error) {
   return error;
 }
 
+function loginFailureMessage(error) {
+  if (error?.message === "帳號或密碼不正確。") return "登入失敗：帳號或密碼不正確。";
+  return `登入失敗：${error?.message || "登入服務暫時無法使用，請稍後再試。"}`;
+}
+
 async function request(body, method = "POST") {
   let response;
   try {
@@ -59,7 +64,7 @@ export function addAdminControls() {
     try {
       await request({ action: "login", username: document.getElementById("admin-username").value.trim(), password: document.getElementById("admin-password").value });
       window.location.reload();
-    } catch (loginError) { error.textContent = `登入失敗：${loginError.message}`; }
+    } catch (loginError) { error.textContent = loginFailureMessage(loginError); }
   });
   getAuthState().then(({ user }) => {
     if (!trigger) return;
