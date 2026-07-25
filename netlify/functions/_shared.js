@@ -22,22 +22,38 @@ function sign(value) {
   return crypto.createHmac("sha256", required("SESSION_SECRET")).update(value).digest("base64url");
 }
 
-function sessionCookie() {
-  const payload = `${Date.now()}.${crypto.randomBytes(18).toString("base64url")}`;
+function accounts() {
+  const raw = process.env.SITE_ACCOUNTS_JSON;
+  if (raw) {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) throw new Error("SITE_ACCOUNTS_JSON 必須是帳號陣列。");
+    return parsed.map(account => ({
+      username: String(account.username || ""),
+      password: String(account.password || ""),
+      role: account.role === "admin" ? "admin" : "editor",
+      displayName: String(account.displayName || account.username || "投稿者")
+    })).filter(account => account.username && account.password);
+  }
+  return [{ username: required("ADMIN_USERNAME"), password: required("ADMIN_PASSWORD"), role: "admin", displayName: "甲魚" }];
+}
+
+function sessionCookie(account) {
+  const payload = Buffer.from(JSON.stringify({ issuedAt: Date.now(), username: account.username, role: account.role, displayName: account.displayName })).toString("base64url");
   return `${payload}.${sign(payload)}`;
 }
 
-function isAdmin(event) {
+function currentUser(event) {
   try {
     const value = cookie(event, "jiayu_admin");
     const parts = value.split(".");
-    if (parts.length !== 3) return false;
-    const payload = `${parts[0]}.${parts[1]}`;
-    const actual = Buffer.from(parts[2]);
-    const expected = Buffer.from(sign(payload));
-    if (actual.length !== expected.length || !crypto.timingSafeEqual(actual, expected)) return false;
-    return Date.now() - Number(parts[0]) < 1000 * 60 * 60 * 24 * 14;
-  } catch (_) { return false; }
+    if (parts.length !== 2) return null;
+    const actual = Buffer.from(parts[1]);
+    const expected = Buffer.from(sign(parts[0]));
+    if (actual.length !== expected.length || !crypto.timingSafeEqual(actual, expected)) return null;
+    const user = JSON.parse(Buffer.from(parts[0], "base64url").toString("utf8"));
+    if (!user.username || !["admin", "editor"].includes(user.role) || Date.now() - Number(user.issuedAt) >= 1000 * 60 * 60 * 24 * 14) return null;
+    return user;
+  } catch (_) { return null; }
 }
 
 function adminCookie(value, maxAge) {
@@ -69,4 +85,4 @@ function filePath(path) {
   return path.split("/").map(segment => encodeURIComponent(segment)).join("/");
 }
 
-module.exports = { adminAuthorId, adminCookie, cookie, filePath, isAdmin, json, required, sessionCookie, supabase, supabaseHeaders };
+module.exports = { accounts, adminAuthorId, adminCookie, cookie, currentUser, filePath, json, required, sessionCookie, supabase, supabaseHeaders };

@@ -1,6 +1,6 @@
 import "./font.js";
-import { createMemory, fetchMemories } from "./cloudData.js";
-import { addAdminControls, isAdmin } from "./auth.js";
+import { createMemory, deleteMemory, fetchMemories } from "./cloudData.js";
+import { addAdminControls, getAuthState } from "./auth.js";
 
 const storageKey = "jiayu-memories";
 const grid = document.getElementById("memory-grid");
@@ -11,6 +11,7 @@ let detailMemory = null;
 let detailIndex = 0;
 let touchStartX = 0;
 let selectedFiles = [];
+let currentUser = null;
 
 function loadLocal() { try { return JSON.parse(localStorage.getItem(storageKey) || "[]"); } catch (_) { return []; } }
 function escapeHtml(value) { return String(value || "").replace(/[&<>'"]/g, character => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", "'":"&#39;", '"':"&quot;" })[character]); }
@@ -21,7 +22,7 @@ function sortMemories(items) { return [...items].sort((first, second) => memoryD
 
 function render() {
   const ordered = sortMemories(memories);
-  grid.innerHTML = ordered.map(memory => { const images = imagesOf(memory); return `<article class="memory-card" data-memory="${memory.id}"><img src="${images[0] || ""}" alt="${escapeHtml(memory.note || "一段記憶")}"><div class="memory-info"><p class="memory-date">${dateLabel(memoryDate(memory))}</p><p class="memory-note">${escapeHtml(memory.note || "未留下備註")}</p>${images.length > 1 ? `<span class="memory-count">${images.length} 張照片</span>` : ""}</div></article>`; }).join("");
+  grid.innerHTML = ordered.map(memory => { const images = imagesOf(memory); const canDelete = memory._cloud && currentUser && (currentUser.role === "admin" || currentUser.username === memory.owner); return `<article class="memory-card" data-memory="${memory.id}"><img src="${images[0] || ""}" alt="${escapeHtml(memory.note || "一段記憶")}">${canDelete ? `<button class="delete-memory" data-delete="${memory.id}" type="button">刪除</button>` : ""}<div class="memory-info"><p class="memory-date">${dateLabel(memoryDate(memory))}</p><p class="memory-note">${escapeHtml(memory.note || "未留下備註")}</p>${images.length > 1 ? `<span class="memory-count">${images.length} 張照片</span>` : ""}</div></article>`; }).join("");
   empty.hidden = ordered.length > 0;
 }
 
@@ -59,7 +60,7 @@ function moveDetail(direction) {
   renderDetail();
 }
 
-grid.addEventListener("click", event => { const card = event.target.closest("[data-memory]"); if (card) openDetail(card.dataset.memory); });
+grid.addEventListener("click", async event => { const deleteButton = event.target.closest("[data-delete]"); if (deleteButton) { event.stopPropagation(); if (!window.confirm("確定要刪除這段記憶嗎？")) return; try { await deleteMemory(deleteButton.dataset.delete); await refresh(); } catch (error) { window.alert(error.message); } return; } const card = event.target.closest("[data-memory]"); if (card) openDetail(card.dataset.memory); });
 document.getElementById("detail-close").addEventListener("click", () => detailModal.close());
 document.getElementById("previous-image").addEventListener("click", () => moveDetail(-1));
 document.getElementById("next-image").addEventListener("click", () => moveDetail(1));
@@ -98,6 +99,6 @@ document.getElementById("memory-form").addEventListener("submit", async event =>
   } catch (error) { message.textContent = `無法保存：${error.message}`; }
 });
 
-isAdmin().then(admin => { if (admin) extractButton.classList.add("is-admin"); });
+getAuthState().then(({ user }) => { currentUser = user; if (user) extractButton.classList.add("is-admin"); render(); });
 addAdminControls();
 refresh();

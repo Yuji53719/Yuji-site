@@ -8,7 +8,11 @@ async function request(body, method = "POST") {
 }
 
 export async function isAdmin() {
-  try { return Boolean((await request(null, "GET")).admin); } catch (_) { return false; }
+  return Boolean((await getAuthState()).user);
+}
+
+export async function getAuthState() {
+  try { return await request(null, "GET"); } catch (_) { return { user: null }; }
 }
 
 export async function requireAdmin() {
@@ -40,16 +44,16 @@ export function addAdminControls() {
       window.location.reload();
     } catch (loginError) { error.textContent = `登入失敗：${loginError.message}`; }
   });
-  isAdmin().then(admin => {
+  getAuthState().then(({ user }) => {
     if (!trigger) return;
-    if (!admin) {
+    if (!user) {
       trigger.addEventListener("click", () => dialog.showModal());
       if (new URLSearchParams(window.location.search).get("login") === "1") dialog.showModal();
       return;
     }
-    trigger.textContent = "管理中 · 登出";
+    trigger.textContent = `${user.displayName} · 登出`;
     trigger.addEventListener("click", async () => { await request({ action: "logout" }); window.location.reload(); });
-    document.documentElement.dataset.admin = "true";
-    document.dispatchEvent(new CustomEvent("admin-ready"));
+    document.documentElement.dataset.admin = user.role;
+    document.dispatchEvent(new CustomEvent("admin-ready", { detail: user }));
   });
 }
