@@ -1,19 +1,14 @@
-import { supabase } from "./supabaseClient.js";
+const endpoint = "/.netlify/functions/auth";
 
-export async function getSession() {
-  const { data } = await supabase.auth.getSession();
-  return data.session;
+async function request(body, method = "POST") {
+  const response = await fetch(endpoint, { method, credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: method === "GET" ? undefined : JSON.stringify(body) });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || "登入服務暫時無法使用。");
+  return data;
 }
 
 export async function isAdmin() {
-  const session = await getSession();
-  if (!session?.user) return false;
-  const { data } = await supabase
-    .from("profiles")
-    .select("is_admin")
-    .eq("id", session.user.id)
-    .maybeSingle();
-  return data?.is_admin === true;
+  try { return Boolean((await request(null, "GET")).admin); } catch (_) { return false; }
 }
 
 export async function requireAdmin() {
@@ -23,7 +18,7 @@ export async function requireAdmin() {
 }
 
 function modal() {
-  return `<dialog class="admin-login" id="admin-login"><form method="dialog" class="admin-login-card"><button class="admin-close" value="cancel" aria-label="關閉">×</button><p class="admin-eyebrow">管理員</p><h2>登入後整理花園</h2><label>電子郵件<input id="admin-email" type="email" autocomplete="email" required></label><label>密碼<input id="admin-password" type="password" autocomplete="current-password" required></label><p class="admin-error" id="admin-error" role="alert"></p><button class="admin-submit" id="admin-submit" type="submit">登入</button></form></dialog>`;
+  return `<dialog class="admin-login" id="admin-login"><form method="dialog" class="admin-login-card"><button class="admin-close" value="cancel" aria-label="關閉">×</button><p class="admin-eyebrow">管理員</p><h2>登入後整理花園</h2><label>帳號<input id="admin-username" type="text" autocomplete="username" required></label><label>密碼<input id="admin-password" type="password" autocomplete="current-password" required></label><p class="admin-error" id="admin-error" role="alert"></p><button class="admin-submit" id="admin-submit" type="submit">登入</button></form></dialog>`;
 }
 
 function style() {
@@ -37,34 +32,23 @@ export function addAdminControls() {
   const dialog = document.getElementById("admin-login");
   const trigger = document.querySelector("[data-admin-login]");
   const error = document.getElementById("admin-error");
-
   dialog.querySelector("form").addEventListener("submit", async event => {
     event.preventDefault();
     error.textContent = "";
-    const email = document.getElementById("admin-email").value.trim();
-    const password = document.getElementById("admin-password").value;
-    const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
-    if (signInError) {
-      error.textContent = `登入失敗：${signInError.message}`;
-      return;
-    }
-    if (!await isAdmin()) {
-      await supabase.auth.signOut();
-      error.textContent = "此帳號沒有管理權限。";
-      return;
-    }
-    window.location.reload();
+    try {
+      await request({ action: "login", username: document.getElementById("admin-username").value.trim(), password: document.getElementById("admin-password").value });
+      window.location.reload();
+    } catch (loginError) { error.textContent = `登入失敗：${loginError.message}`; }
   });
-
   isAdmin().then(admin => {
     if (!trigger) return;
     if (!admin) {
-      trigger?.addEventListener("click", () => dialog.showModal());
+      trigger.addEventListener("click", () => dialog.showModal());
       if (new URLSearchParams(window.location.search).get("login") === "1") dialog.showModal();
       return;
     }
     trigger.textContent = "管理中 · 登出";
-    trigger.addEventListener("click", async () => { await supabase.auth.signOut(); window.location.reload(); });
+    trigger.addEventListener("click", async () => { await request({ action: "logout" }); window.location.reload(); });
     document.documentElement.dataset.admin = "true";
     document.dispatchEvent(new CustomEvent("admin-ready"));
   });
