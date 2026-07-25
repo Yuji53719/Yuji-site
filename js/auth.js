@@ -44,7 +44,10 @@ export function addAdminControls() {
     const email = document.getElementById("admin-email").value.trim();
     const password = document.getElementById("admin-password").value;
     const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
-    if (signInError) { error.textContent = "登入失敗，請確認電子郵件與密碼。"; return; }
+    if (signInError) {
+      error.textContent = `登入失敗：${signInError.message}`;
+      return;
+    }
     if (!await isAdmin()) {
       await supabase.auth.signOut();
       error.textContent = "此帳號沒有管理權限。";
