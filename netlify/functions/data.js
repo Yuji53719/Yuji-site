@@ -38,6 +38,26 @@ async function saveProfile(body) {
   return rows[0];
 }
 
+async function readComments(query) {
+  const entityType = String(query.entityType || "");
+  const entityId = String(query.entityId || "");
+  if (!['thought', 'memory'].includes(entityType) || !entityId) throw new Error("留言目標無效。");
+  return await supabase(`/rest/v1/site_comments?entity_type=eq.${encodeURIComponent(entityType)}&entity_id=eq.${encodeURIComponent(entityId)}&select=id,nickname,content,created_at&order=created_at.asc`);
+}
+
+async function addComment(body) {
+  const entityType = String(body.entityType || "");
+  const entityId = String(body.entityId || "").trim();
+  const nickname = String(body.nickname || "").trim();
+  const content = String(body.content || "").trim();
+  if (!['thought', 'memory'].includes(entityType) || !entityId) throw new Error("留言目標無效。");
+  if (!nickname) throw new Error("請填寫暱稱。");
+  if (!content) throw new Error("請填寫留言內容。");
+  if (nickname.length > 40 || content.length > 1200) throw new Error("留言內容過長。");
+  const rows = await supabase("/rest/v1/site_comments", { method: "POST", headers: { "Content-Type": "application/json", Prefer: "return=representation" }, body: JSON.stringify({ entity_type: entityType, entity_id: entityId, nickname, content }) });
+  return rows[0];
+}
+
 async function addThought(body, user) {
   const authorId = await adminAuthorId();
   await supabase("/rest/v1/thoughts", { method: "POST", headers: { "Content-Type": "application/json", Prefer: "return=minimal" }, body: JSON.stringify({ author_id: authorId, author_username: user.username, author_name: user.displayName, title: String(body.title || ""), content: String(body.content || ""), published_at: new Date().toISOString().slice(0, 10) }) });
@@ -82,6 +102,28 @@ async function removeMemory(identifier, user) {
   if (images.length) await supabase("/storage/v1/object/memories", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prefixes: images.map(image => image.storage_path) }) });
 }
 
+async function updateThought(body, user) {
+  const identifier = String(body.id || "");
+  const rows = await supabase(`/rest/v1/thoughts?id=eq.${encodeURIComponent(identifier)}&select=id,author_username`);
+  const thought = rows[0];
+  if (!thought) throw new Error("找不到這則隨想。");
+  if (user.role !== "admin" && thought.author_username !== user.username) throw new Error("你只能編輯自己發布的隨想。");
+  const content = String(body.content || "").trim();
+  if (!content) throw new Error("正文不能留空。");
+  await supabase(`/rest/v1/thoughts?id=eq.${encodeURIComponent(identifier)}`, { method: "PATCH", headers: { "Content-Type": "application/json", Prefer: "return=minimal" }, body: JSON.stringify({ title: String(body.title || "").trim(), content }) });
+}
+
+async function updateMemory(body, user) {
+  const identifier = String(body.id || "");
+  const rows = await supabase(`/rest/v1/memories?id=eq.${encodeURIComponent(identifier)}&select=id,author_username`);
+  const memory = rows[0];
+  if (!memory) throw new Error("找不到這段記憶。");
+  if (user.role !== "admin" && memory.author_username !== user.username) throw new Error("你只能編輯自己的記憶。");
+  const date = String(body.date || "");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error("請選擇記憶日期。");
+  await supabase(`/rest/v1/memories?id=eq.${encodeURIComponent(identifier)}`, { method: "PATCH", headers: { "Content-Type": "application/json", Prefer: "return=minimal" }, body: JSON.stringify({ memory_date: date, note: String(body.note || "").trim(), story: String(body.story || "").trim() }) });
+}
+
 exports.handler = async event => {
   try {
     const query = event.queryStringParameters || {};
@@ -89,13 +131,15 @@ exports.handler = async event => {
       if (query.type === "thoughts") return json(200, await readThoughts());
       if (query.type === "memories") return json(200, await readMemories());
       if (query.type === "profile") return json(200, await readProfile());
+      if (query.type === "comments") return json(200, await readComments(query));
       return json(400, { error: "未知資料類型。" });
     }
+    if (event.httpMethod !== "POST") return json(405, { error: "Method not allowed" });
+    const body = parse(event);
+    if (body.action === "comment") return json(201, await addComment(body));
     const user = currentUser(event);
     if (!user) return json(401, { error: "請先登入。" });
-    if (event.httpMethod !== "POST") return json(405, { error: "Method not allowed" });
     if (query.action === "memory-image") { await addMemoryImage(event, query, user); return json(201, { ok: true }); }
-    const body = parse(event);
     if (body.action === "profile") {
       if (user.role !== "admin") return json(403, { error: "只有管理員可以修改自我介紹。" });
       return json(200, await saveProfile(body));
@@ -104,6 +148,8 @@ exports.handler = async event => {
     if (body.action === "memory") return json(201, await addMemory(body, user));
     if (body.action === "delete-thought") { await removeThought(body.id, user); return json(200, { ok: true }); }
     if (body.action === "delete-memory") { await removeMemory(body.id, user); return json(200, { ok: true }); }
+    if (body.action === "update-thought") { await updateThought(body, user); return json(200, { ok: true }); }
+    if (body.action === "update-memory") { await updateMemory(body, user); return json(200, { ok: true }); }
     return json(400, { error: "未知操作。" });
   } catch (error) {
     console.error(error);

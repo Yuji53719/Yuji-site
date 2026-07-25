@@ -1,6 +1,7 @@
 import "./font.js";
-import { createMemory, deleteMemory, fetchMemories } from "./cloudData.js";
+import { createMemory, deleteMemory, fetchMemories, updateMemory } from "./cloudData.js";
 import { addAdminControls, getAuthState } from "./auth.js";
+import { mountCommentSection } from "../components/CommentSection.js";
 
 const storageKey = "jiayu-memories";
 const grid = document.getElementById("memory-grid");
@@ -12,6 +13,7 @@ let detailIndex = 0;
 let touchStartX = 0;
 let selectedFiles = [];
 let currentUser = null;
+let editingMemory = null;
 
 function loadLocal() { try { return JSON.parse(localStorage.getItem(storageKey) || "[]"); } catch (_) { return []; } }
 function escapeHtml(value) { return String(value || "").replace(/[&<>'"]/g, character => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", "'":"&#39;", '"':"&quot;" })[character]); }
@@ -22,7 +24,7 @@ function sortMemories(items) { return [...items].sort((first, second) => memoryD
 
 function render() {
   const ordered = sortMemories(memories);
-  grid.innerHTML = ordered.map(memory => { const images = imagesOf(memory); const canDelete = memory._cloud && currentUser && (currentUser.role === "admin" || currentUser.username === memory.owner); return `<article class="memory-card" data-memory="${memory.id}"><img src="${images[0] || ""}" alt="${escapeHtml(memory.note || "一段記憶")}">${canDelete ? `<button class="delete-memory" data-delete="${memory.id}" type="button">刪除</button>` : ""}<div class="memory-info"><p class="memory-date">${dateLabel(memoryDate(memory))}</p><p class="memory-note">${escapeHtml(memory.note || "未留下備註")}</p>${images.length > 1 ? `<span class="memory-count">${images.length} 張照片</span>` : ""}</div></article>`; }).join("");
+  grid.innerHTML = ordered.map(memory => { const images = imagesOf(memory); const canEdit = memory._cloud && currentUser && (currentUser.role === "admin" || currentUser.username === memory.owner); return `<article class="memory-card" data-memory="${memory.id}"><img src="${images[0] || ""}" alt="${escapeHtml(memory.note || "一段記憶")}">${canEdit ? `<div class="memory-actions"><button class="edit-memory" data-edit="${memory.id}" type="button">編輯</button><button class="delete-memory" data-delete="${memory.id}" type="button">刪除</button></div>` : ""}<div class="memory-info"><p class="memory-date">${dateLabel(memoryDate(memory))}</p><p class="memory-note">${escapeHtml(memory.note || "未留下備註")}</p>${images.length > 1 ? `<span class="memory-count">${images.length} 張照片</span>` : ""}</div></article>`; }).join("");
   empty.hidden = ordered.length > 0;
 }
 
@@ -43,6 +45,7 @@ function renderDetail() {
   const story = document.getElementById("detail-story");
   story.hidden = !detailMemory.story;
   story.textContent = detailMemory.story || "";
+  mountCommentSection(document.getElementById("detail-comments"), "memory", detailMemory.id);
 }
 
 function openDetail(identifier) {
@@ -60,7 +63,7 @@ function moveDetail(direction) {
   renderDetail();
 }
 
-grid.addEventListener("click", async event => { const deleteButton = event.target.closest("[data-delete]"); if (deleteButton) { event.stopPropagation(); if (!window.confirm("確定要刪除這段記憶嗎？")) return; try { await deleteMemory(deleteButton.dataset.delete); await refresh(); } catch (error) { window.alert(error.message); } return; } const card = event.target.closest("[data-memory]"); if (card) openDetail(card.dataset.memory); });
+grid.addEventListener("click", async event => { const editButton = event.target.closest("[data-edit]"); if (editButton) { event.stopPropagation(); openMemoryEditor(memories.find(memory => String(memory.id) === editButton.dataset.edit)); return; } const deleteButton = event.target.closest("[data-delete]"); if (deleteButton) { event.stopPropagation(); if (!window.confirm("確定要刪除這段記憶嗎？")) return; try { await deleteMemory(deleteButton.dataset.delete); await refresh(); } catch (error) { window.alert(error.message); } return; } const card = event.target.closest("[data-memory]"); if (card) openDetail(card.dataset.memory); });
 document.getElementById("detail-close").addEventListener("click", () => detailModal.close());
 document.getElementById("previous-image").addEventListener("click", () => moveDetail(-1));
 document.getElementById("next-image").addEventListener("click", () => moveDetail(1));
@@ -77,23 +80,35 @@ extractButton.addEventListener("click", () => fileInput.click());
 fileInput.addEventListener("change", () => {
   selectedFiles = [...fileInput.files];
   if (!selectedFiles.length) return;
+  editingMemory = null;
   document.getElementById("selected-files").textContent = `已選擇 ${selectedFiles.length} 張照片`;
+  document.getElementById("memory-form-title").textContent = "抽離記憶";
   editor.showModal();
 });
+
+function openMemoryEditor(memory) {
+  if (!memory) return;
+  editingMemory = memory;
+  document.getElementById("memory-form-title").textContent = "編輯記憶";
+  document.getElementById("selected-files").textContent = "照片會保留原有排序。";
+  document.getElementById("memory-date").value = memory.date || "";
+  document.getElementById("memory-note").value = memory.note || "";
+  document.getElementById("memory-story").value = memory.story || "";
+  document.getElementById("memory-message").textContent = "";
+  editor.showModal();
+}
 document.getElementById("memory-form").addEventListener("submit", async event => {
   event.preventDefault();
   const message = document.getElementById("memory-message");
   message.textContent = "正在保存照片……";
   try {
-    await createMemory({
-      date: document.getElementById("memory-date").value,
-      note: document.getElementById("memory-note").value.trim(),
-      story: document.getElementById("memory-story").value.trim(),
-      files: selectedFiles
-    });
+    const values = { date: document.getElementById("memory-date").value, note: document.getElementById("memory-note").value.trim(), story: document.getElementById("memory-story").value.trim() };
+    if (editingMemory) await updateMemory({ id: editingMemory.id, ...values });
+    else await createMemory({ ...values, files: selectedFiles });
     editor.close();
     fileInput.value = "";
     selectedFiles = [];
+    editingMemory = null;
     event.target.reset();
     await refresh();
   } catch (error) { message.textContent = `無法保存：${error.message}`; }

@@ -23,6 +23,14 @@ export async function updateProfile(content) {
   return await request("", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "profile", content }) });
 }
 
+export async function fetchComments(entityType, entityId) {
+  return await request(`?type=comments&entityType=${encodeURIComponent(entityType)}&entityId=${encodeURIComponent(entityId)}`);
+}
+
+export async function createComment({ entityType, entityId, nickname, content }) {
+  return await request("", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "comment", entityType, entityId, nickname, content }) });
+}
+
 export async function createThought({ title, content }) {
   await request("", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "thought", title, content }) });
 }
@@ -40,4 +48,12 @@ export async function deleteThought(id) {
 
 export async function deleteMemory(id) {
   await request("", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "delete-memory", id }) });
+}
+
+export async function updateThought({ id, title, content }) {
+  await request("", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "update-thought", id, title, content }) });
+}
+
+export async function updateMemory({ id, date, note, story }) {
+  await request("", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "update-memory", id, date, note, story }) });
 }
