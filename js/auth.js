@@ -1,4 +1,4 @@
-const endpoint = new URL("/.netlify/functions/auth", window.location.origin).toString();
+const endpoint = new URL("/api/auth", window.location.origin).toString();
 
 function connectionError(error) {
   if (window.location.protocol === "file:") return new Error("目前正以本機檔案預覽，無法使用登入服務。請從 Netlify 公開網址開啟網站後再登入。");

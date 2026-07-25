@@ -1,4 +1,4 @@
-const endpoint = "/.netlify/functions/data";
+const endpoint = "/api/data";
 
 async function request(path = "", options = {}) {
   const response = await fetch(`${endpoint}${path}`, { credentials: "same-origin", ...options });

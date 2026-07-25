@@ -1,7 +1,7 @@
 import "./font.js";
 import { getAuthState } from "./auth.js";
 
-const endpoint = "/.netlify/functions/accounts";
+const endpoint = "/api/accounts";
 const list = document.getElementById("account-list");
 const message = document.getElementById("account-message");
 

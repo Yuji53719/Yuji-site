@@ -4,3 +4,21 @@
 
 [functions]
   node_bundler = "esbuild"
+
+[[redirects]]
+  from = "/api/auth"
+  to = "/.netlify/functions/auth"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/data"
+  to = "/.netlify/functions/data"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/accounts"
+  to = "/.netlify/functions/accounts"
+  status = 200
+  force = true
