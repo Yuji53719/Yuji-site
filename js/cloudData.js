@@ -15,6 +15,14 @@ export async function fetchMemories() {
   try { return await request("?type=memories"); } catch (error) { console.warn(error.message); return null; }
 }
 
+export async function fetchProfile() {
+  return await request("?type=profile");
+}
+
+export async function updateProfile(content) {
+  return await request("", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "profile", content }) });
+}
+
 export async function createThought({ title, content }) {
   await request("", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "thought", title, content }) });
 }

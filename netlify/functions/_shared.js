@@ -22,7 +22,7 @@ function sign(value) {
   return crypto.createHmac("sha256", required("SESSION_SECRET")).update(value).digest("base64url");
 }
 
-function accounts() {
+function legacyAccounts() {
   const raw = process.env.SITE_ACCOUNTS_JSON;
   if (raw) {
     const parsed = JSON.parse(raw);
@@ -35,6 +35,21 @@ function accounts() {
     })).filter(account => account.username && account.password);
   }
   return [{ username: required("ADMIN_USERNAME"), password: required("ADMIN_PASSWORD"), role: "admin", displayName: "甲魚" }];
+}
+
+function passwordHash(password) {
+  const salt = crypto.randomBytes(16).toString("base64url");
+  const hash = crypto.scryptSync(password, salt, 64).toString("base64url");
+  return `scrypt$${salt}$${hash}`;
+}
+
+function passwordMatches(password, encoded) {
+  const [algorithm, salt, expected] = String(encoded || "").split("$");
+  if (algorithm !== "scrypt" || !salt || !expected) return false;
+  const actual = crypto.scryptSync(password, salt, 64).toString("base64url");
+  const actualBuffer = Buffer.from(actual);
+  const expectedBuffer = Buffer.from(expected);
+  return actualBuffer.length === expectedBuffer.length && crypto.timingSafeEqual(actualBuffer, expectedBuffer);
 }
 
 function sessionCookie(account) {
@@ -75,6 +90,39 @@ async function supabase(path, options = {}) {
   return text ? JSON.parse(text) : null;
 }
 
+async function storedAccounts() {
+  try {
+    return await supabase("/rest/v1/site_accounts?select=id,username,password_hash,role,display_name,is_active&order=created_at.asc");
+  } catch (error) {
+    if (String(error.message).includes("site_accounts")) return null;
+    throw error;
+  }
+}
+
+async function createStoredAccount({ username, password, role = "editor", displayName }) {
+  const account = { username: String(username).trim(), password_hash: passwordHash(password), role: role === "admin" ? "admin" : "editor", display_name: String(displayName || username).trim(), is_active: true };
+  const rows = await supabase("/rest/v1/site_accounts", { method: "POST", headers: { "Content-Type": "application/json", Prefer: "return=representation" }, body: JSON.stringify(account) });
+  return rows[0];
+}
+
+async function authenticateAccount(username, password) {
+  const stored = await storedAccounts();
+  if (stored?.length) {
+    const account = stored.find(candidate => candidate.username === username && candidate.is_active && passwordMatches(password, candidate.password_hash));
+    return account ? { username: account.username, role: account.role, displayName: account.display_name } : null;
+  }
+  const legacy = legacyAccounts().find(candidate => {
+    const enteredUsername = Buffer.from(username);
+    const expectedUsername = Buffer.from(candidate.username);
+    const enteredPassword = Buffer.from(password);
+    const expectedPassword = Buffer.from(candidate.password);
+    return enteredUsername.length === expectedUsername.length && enteredPassword.length === expectedPassword.length && crypto.timingSafeEqual(enteredUsername, expectedUsername) && crypto.timingSafeEqual(enteredPassword, expectedPassword);
+  });
+  if (!legacy) return null;
+  if (stored !== null && legacy.role === "admin") await createStoredAccount({ username: legacy.username, password: legacy.password, role: "admin", displayName: legacy.displayName });
+  return { username: legacy.username, role: legacy.role, displayName: legacy.displayName };
+}
+
 async function adminAuthorId() {
   const users = await supabase("/rest/v1/profiles?is_admin=eq.true&select=id&limit=1");
   if (!users?.[0]?.id) throw new Error("找不到管理員資料。");
@@ -85,4 +133,4 @@ function filePath(path) {
   return path.split("/").map(segment => encodeURIComponent(segment)).join("/");
 }
 
-module.exports = { accounts, adminAuthorId, adminCookie, cookie, currentUser, filePath, json, required, sessionCookie, supabase, supabaseHeaders };
+module.exports = { adminAuthorId, adminCookie, authenticateAccount, cookie, createStoredAccount, currentUser, filePath, json, passwordHash, required, sessionCookie, storedAccounts, supabase, supabaseHeaders };

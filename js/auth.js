@@ -1,9 +1,22 @@
-const endpoint = "/.netlify/functions/auth";
+const endpoint = new URL("/.netlify/functions/auth", window.location.origin).toString();
+
+function connectionError(error) {
+  if (window.location.protocol === "file:") return new Error("目前正以本機檔案預覽，無法使用登入服務。請從 Netlify 公開網址開啟網站後再登入。");
+  if (error instanceof TypeError) return new Error("無法連線至登入服務。請檢查網路連線，或稍後再試。");
+  return error;
+}
 
 async function request(body, method = "POST") {
-  const response = await fetch(endpoint, { method, credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: method === "GET" ? undefined : JSON.stringify(body) });
+  let response;
+  try {
+    response = await fetch(endpoint, { method, credentials: "same-origin", cache: "no-store", headers: method === "GET" ? { Accept: "application/json" } : { Accept: "application/json", "Content-Type": "application/json" }, body: method === "GET" ? undefined : JSON.stringify(body) });
+  } catch (error) { throw connectionError(error); }
   const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.error || "登入服務暫時無法使用。");
+  if (!response.ok) {
+    if (response.status === 401) throw new Error("帳號或密碼不正確。");
+    if (response.status >= 500) throw new Error(data.error || "登入服務暫時無法使用，請稍後再試。");
+    throw new Error(data.error || `登入請求失敗（${response.status}）。`);
+  }
   return data;
 }
 
@@ -22,7 +35,7 @@ export async function requireAdmin() {
 }
 
 function modal() {
-  return `<dialog class="admin-login" id="admin-login"><form method="dialog" class="admin-login-card"><button class="admin-close" value="cancel" aria-label="關閉">×</button><p class="admin-eyebrow">管理員</p><h2>登入後整理花園</h2><label>帳號<input id="admin-username" type="text" autocomplete="username" required></label><label>密碼<input id="admin-password" type="password" autocomplete="current-password" required></label><p class="admin-error" id="admin-error" role="alert"></p><button class="admin-submit" id="admin-submit" type="submit">登入</button></form></dialog>`;
+  return `<dialog class="admin-login" id="admin-login"><form class="admin-login-card"><button class="admin-close" id="admin-close" type="button" aria-label="關閉">×</button><p class="admin-eyebrow">管理員</p><h2>登入後整理花園</h2><label>帳號<input id="admin-username" type="text" autocomplete="username" required></label><label>密碼<input id="admin-password" type="password" autocomplete="current-password" required></label><p class="admin-error" id="admin-error" role="alert"></p><button class="admin-submit" id="admin-submit" type="submit">登入</button></form></dialog>`;
 }
 
 function style() {
@@ -36,7 +49,11 @@ export function addAdminControls() {
   const dialog = document.getElementById("admin-login");
   const trigger = document.querySelector("[data-admin-login]");
   const error = document.getElementById("admin-error");
-  dialog.querySelector("form").addEventListener("submit", async event => {
+  const form = dialog.querySelector("form");
+  const close = () => { error.textContent = ""; dialog.close(); };
+  document.getElementById("admin-close").addEventListener("click", close);
+  dialog.addEventListener("close", () => { error.textContent = ""; });
+  form.addEventListener("submit", async event => {
     event.preventDefault();
     error.textContent = "";
     try {
@@ -54,6 +71,7 @@ export function addAdminControls() {
     trigger.textContent = `${user.displayName} · 登出`;
     trigger.addEventListener("click", async () => { await request({ action: "logout" }); window.location.reload(); });
     document.documentElement.dataset.admin = user.role;
+    if (user.role === "admin") document.querySelectorAll("[data-admin-only]").forEach(element => { element.hidden = false; });
     document.dispatchEvent(new CustomEvent("admin-ready", { detail: user }));
   });
 }

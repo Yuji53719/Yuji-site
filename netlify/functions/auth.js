@@ -1,21 +1,22 @@
-const crypto = require("crypto");
-const { accounts, adminCookie, currentUser, json, sessionCookie } = require("./_shared");
+const { adminCookie, authenticateAccount, currentUser, json, sessionCookie } = require("./_shared");
 
 exports.handler = async event => {
-  if (event.httpMethod === "GET") return json(200, { user: currentUser(event) });
-  if (event.httpMethod !== "POST") return json(405, { error: "Method not allowed" });
-  const body = JSON.parse(event.body || "{}");
-  if (body.action === "logout") return json(200, { admin: false }, { "Set-Cookie": adminCookie("", 0) });
-  if (body.action !== "login") return json(400, { error: "無效請求。" });
-  const username = String(body.username || "");
-  const password = String(body.password || "");
-  const account = accounts().find(candidate => {
-    const enteredUsername = Buffer.from(username);
-    const expectedUsername = Buffer.from(candidate.username);
-    const enteredPassword = Buffer.from(password);
-    const expectedPassword = Buffer.from(candidate.password);
-    return enteredUsername.length === expectedUsername.length && enteredPassword.length === expectedPassword.length && crypto.timingSafeEqual(enteredUsername, expectedUsername) && crypto.timingSafeEqual(enteredPassword, expectedPassword);
-  });
-  if (!account) return json(401, { error: "帳號或密碼不正確。" });
-  return json(200, { user: { username: account.username, role: account.role, displayName: account.displayName } }, { "Set-Cookie": adminCookie(sessionCookie(account), 60 * 60 * 24 * 14) });
+  const headers = { "Cache-Control": "no-store", "Access-Control-Allow-Origin": event.headers.origin || "", "Access-Control-Allow-Credentials": "true", "Access-Control-Allow-Headers": "Content-Type, Accept", "Access-Control-Allow-Methods": "GET, POST, OPTIONS" };
+  try {
+    if (event.httpMethod === "OPTIONS") return json(204, {}, headers);
+    if (event.httpMethod === "GET") return json(200, { user: currentUser(event) }, headers);
+    if (event.httpMethod !== "POST") return json(405, { error: "Method not allowed" }, headers);
+    const body = JSON.parse(event.body || "{}");
+    if (body.action === "logout") return json(200, { admin: false }, { ...headers, "Set-Cookie": adminCookie("", 0) });
+    if (body.action !== "login") return json(400, { error: "無效請求。" }, headers);
+    const username = String(body.username || "").trim();
+    const password = String(body.password || "");
+    if (!username || !password) return json(400, { error: "請輸入帳號與密碼。" }, headers);
+    const account = await authenticateAccount(username, password);
+    if (!account) return json(401, { error: "帳號或密碼不正確。" }, headers);
+    return json(200, { user: { username: account.username, role: account.role, displayName: account.displayName } }, { ...headers, "Set-Cookie": adminCookie(sessionCookie(account), 60 * 60 * 24 * 14) });
+  } catch (error) {
+    console.error("Auth function failed", error);
+    return json(500, { error: "登入服務設定或連線異常，請聯絡網站管理員檢查 Netlify 環境變數。" }, headers);
+  }
 };

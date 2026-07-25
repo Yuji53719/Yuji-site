@@ -26,6 +26,18 @@ async function readMemories() {
   }));
 }
 
+async function readProfile() {
+  const rows = await supabase("/rest/v1/site_profile?id=eq.main&select=content,updated_at");
+  return rows[0] || { content: "", updated_at: null };
+}
+
+async function saveProfile(body) {
+  const content = String(body.content || "").trim();
+  if (!content) throw new Error("介紹不能留空。");
+  const rows = await supabase("/rest/v1/site_profile", { method: "POST", headers: { "Content-Type": "application/json", Prefer: "resolution=merge-duplicates,return=representation" }, body: JSON.stringify({ id: "main", content, updated_at: new Date().toISOString() }) });
+  return rows[0];
+}
+
 async function addThought(body, user) {
   const authorId = await adminAuthorId();
   await supabase("/rest/v1/thoughts", { method: "POST", headers: { "Content-Type": "application/json", Prefer: "return=minimal" }, body: JSON.stringify({ author_id: authorId, author_username: user.username, author_name: user.displayName, title: String(body.title || ""), content: String(body.content || ""), published_at: new Date().toISOString().slice(0, 10) }) });
@@ -76,6 +88,7 @@ exports.handler = async event => {
     if (event.httpMethod === "GET") {
       if (query.type === "thoughts") return json(200, await readThoughts());
       if (query.type === "memories") return json(200, await readMemories());
+      if (query.type === "profile") return json(200, await readProfile());
       return json(400, { error: "未知資料類型。" });
     }
     const user = currentUser(event);
@@ -83,6 +96,10 @@ exports.handler = async event => {
     if (event.httpMethod !== "POST") return json(405, { error: "Method not allowed" });
     if (query.action === "memory-image") { await addMemoryImage(event, query, user); return json(201, { ok: true }); }
     const body = parse(event);
+    if (body.action === "profile") {
+      if (user.role !== "admin") return json(403, { error: "只有管理員可以修改自我介紹。" });
+      return json(200, await saveProfile(body));
+    }
     if (body.action === "thought") { await addThought(body, user); return json(201, { ok: true }); }
     if (body.action === "memory") return json(201, await addMemory(body, user));
     if (body.action === "delete-thought") { await removeThought(body.id, user); return json(200, { ok: true }); }
