@@ -57,6 +57,35 @@ create table if not exists public.series_posts (
 create index if not exists series_posts_published_at_idx
   on public.series_posts (published_at desc, created_at desc);
 
+-- 中藥學習資料。配伍與禁忌內容由管理員自行整理，不由系統推斷。
+create table if not exists public.medicine_materials (
+  id uuid primary key default gen_random_uuid(),
+  name text not null unique check (char_length(name) between 1 and 80),
+  nature text not null default '',
+  flavor text not null default '',
+  notes text not null default '',
+  image_path text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.medicine_relations (
+  id uuid primary key default gen_random_uuid(),
+  source_id uuid not null references public.medicine_materials(id) on delete cascade,
+  target_id uuid not null references public.medicine_materials(id) on delete cascade,
+  relation_type text not null check (relation_type in ('compatible', 'avoid', 'similar', 'complementary')),
+  note text not null default '',
+  created_at timestamptz not null default now(),
+  unique (source_id, target_id, relation_type),
+  check (source_id <> target_id)
+);
+
+create index if not exists medicine_materials_name_idx
+  on public.medicine_materials (name);
+
+create index if not exists medicine_relations_source_idx
+  on public.medicine_relations (source_id, relation_type);
+
 -- 網站所有資料寫入均由 Netlify／Vercel 的伺服器函式使用 service_role 完成。
 -- 此權限不會暴露給瀏覽器；它只補足伺服器讀寫投稿、記憶與帳號所需的資料表權限。
 grant usage on schema public to service_role;
@@ -73,7 +102,9 @@ begin
     'site_profile',
     'site_comments',
     'series_posts',
-    'site_accounts'
+    'site_accounts',
+    'medicine_materials',
+    'medicine_relations'
   ]
   loop
     if to_regclass('public.' || table_name) is not null then

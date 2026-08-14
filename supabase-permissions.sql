@@ -16,7 +16,9 @@ begin
     'site_profile',
     'site_comments',
     'series_posts',
-    'site_accounts'
+    'site_accounts',
+    'medicine_materials',
+    'medicine_relations'
   ]
   loop
     if to_regclass('public.' || table_name) is not null then

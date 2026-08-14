@@ -19,6 +19,10 @@ export async function fetchSeries() {
   try { return await request("?type=series"); } catch (error) { console.warn(error.message); return null; }
 }
 
+export async function fetchMedicines() {
+  try { return await request("?type=medicines"); } catch (error) { console.warn(error.message); return null; }
+}
+
 export async function fetchProfile() {
   return await request("?type=profile");
 }
@@ -65,4 +69,23 @@ export async function updateThought({ id, title, content }) {
 
 export async function updateMemory({ id, date, note, story }) {
   await request("", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "update-memory", id, date, note, story }) });
+}
+
+export async function createMedicine({ name, nature, flavor, notes, relations, image }) {
+  const medicine = await request("", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "medicine", name, nature, flavor, notes, relations }) });
+  if (image) await uploadMedicineImage(medicine.id, image);
+  return medicine;
+}
+
+export async function updateMedicine({ id, name, nature, flavor, notes, relations, image }) {
+  await request("", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "update-medicine", id, name, nature, flavor, notes, relations }) });
+  if (image) await uploadMedicineImage(id, image);
+}
+
+async function uploadMedicineImage(id, image) {
+  await request(`?action=medicine-image&medicineId=${encodeURIComponent(id)}`, { method: "POST", headers: { "Content-Type": image.type || "application/octet-stream", "X-File-Name": encodeURIComponent(image.name) }, body: image });
+}
+
+export async function deleteMedicine(id) {
+  await request("", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "delete-medicine", id }) });
 }

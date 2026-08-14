@@ -36,6 +36,91 @@ async function readSeries() {
   return posts.map(post => ({ id: post.id, title: post.title, content: post.content || "", cover: post.cover_path ? publicImageUrl(post.cover_path) : "", publishedAt: post.published_at, createdAt: post.created_at, author: post.author_name, owner: post.author_username, _cloud: true }));
 }
 
+async function readMedicines() {
+  const [materials, relations] = await Promise.all([
+    supabase("/rest/v1/medicine_materials?select=id,name,nature,flavor,notes,image_path,created_at,updated_at&order=name.asc"),
+    supabase("/rest/v1/medicine_relations?select=id,source_id,target_id,relation_type,note&order=created_at.asc")
+  ]);
+  return materials.map(material => ({
+    id: material.id,
+    name: material.name,
+    nature: material.nature || "",
+    flavor: material.flavor || "",
+    notes: material.notes || "",
+    image: material.image_path ? publicImageUrl(material.image_path) : "",
+    createdAt: material.created_at,
+    updatedAt: material.updated_at,
+    relations: relations.filter(relation => relation.source_id === material.id).map(relation => ({ id: relation.id, targetId: relation.target_id, type: relation.relation_type, note: relation.note || "" }))
+  }));
+}
+
+function medicineInput(body) {
+  const name = String(body.name || "").trim();
+  const nature = String(body.nature || "").trim();
+  const flavor = String(body.flavor || "").trim();
+  const notes = String(body.notes || "").trim();
+  if (!name) throw new Error("請填寫藥材名稱。");
+  if (name.length > 80 || nature.length > 80 || flavor.length > 120 || notes.length > 5000) throw new Error("藥材資料過長。");
+  return { name, nature, flavor, notes };
+}
+
+function medicineRelations(relations, sourceId) {
+  if (!Array.isArray(relations)) return [];
+  const allowed = new Set(["compatible", "avoid", "similar", "complementary"]);
+  const unique = new Set();
+  return relations.map(relation => ({
+    source_id: sourceId,
+    target_id: String(relation.targetId || "").trim(),
+    relation_type: String(relation.type || "").trim(),
+    note: String(relation.note || "").trim().slice(0, 1000)
+  })).filter(relation => {
+    const key = `${relation.target_id}:${relation.relation_type}`;
+    if (!relation.target_id || relation.target_id === sourceId || !allowed.has(relation.relation_type) || unique.has(key)) return false;
+    unique.add(key);
+    return true;
+  });
+}
+
+async function addMedicine(body) {
+  const rows = await supabase("/rest/v1/medicine_materials", { method: "POST", headers: { "Content-Type": "application/json", Prefer: "return=representation" }, body: JSON.stringify(medicineInput(body)) });
+  const medicine = rows[0];
+  const relations = medicineRelations(body.relations, medicine.id);
+  if (relations.length) await supabase("/rest/v1/medicine_relations", { method: "POST", headers: { "Content-Type": "application/json", Prefer: "return=minimal" }, body: JSON.stringify(relations) });
+  return medicine;
+}
+
+async function updateMedicine(body) {
+  const identifier = String(body.id || "");
+  const existing = await supabase(`/rest/v1/medicine_materials?id=eq.${encodeURIComponent(identifier)}&select=id`);
+  if (!existing[0]) throw new Error("找不到這味藥材。");
+  await supabase(`/rest/v1/medicine_materials?id=eq.${encodeURIComponent(identifier)}`, { method: "PATCH", headers: { "Content-Type": "application/json", Prefer: "return=minimal" }, body: JSON.stringify({ ...medicineInput(body), updated_at: new Date().toISOString() }) });
+  await supabase(`/rest/v1/medicine_relations?source_id=eq.${encodeURIComponent(identifier)}`, { method: "DELETE", headers: { Prefer: "return=minimal" } });
+  const relations = medicineRelations(body.relations, identifier);
+  if (relations.length) await supabase("/rest/v1/medicine_relations", { method: "POST", headers: { "Content-Type": "application/json", Prefer: "return=minimal" }, body: JSON.stringify(relations) });
+}
+
+async function addMedicineImage(event, query) {
+  const medicineId = String(query.medicineId || "");
+  const rows = await supabase(`/rest/v1/medicine_materials?id=eq.${encodeURIComponent(medicineId)}&select=id,image_path`);
+  if (!rows[0]) throw new Error("找不到這味藥材。");
+  let filename = String(event.headers["x-file-name"] || "image");
+  try { filename = decodeURIComponent(filename); } catch (_) { /* 保留原檔名 */ }
+  filename = filename.replace(/[^a-zA-Z0-9._-]/g, "-");
+  const path = `medicine/${medicineId}/${Date.now()}-${filename}`;
+  const bytes = Buffer.from(event.body || "", event.isBase64Encoded ? "base64" : "utf8");
+  const response = await fetch(`${supabaseBaseUrl()}/storage/v1/object/memories/${filePath(path)}`, { method: "POST", headers: supabaseHeaders({ "Content-Type": event.headers["content-type"] || "application/octet-stream", "x-upsert": "false" }), body: bytes });
+  if (!response.ok) throw new Error((await response.text()) || "藥材圖片上傳失敗。");
+  await supabase(`/rest/v1/medicine_materials?id=eq.${encodeURIComponent(medicineId)}`, { method: "PATCH", headers: { "Content-Type": "application/json", Prefer: "return=minimal" }, body: JSON.stringify({ image_path: path, updated_at: new Date().toISOString() }) });
+  if (rows[0].image_path) await supabase("/storage/v1/object/memories", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prefixes: [rows[0].image_path] }) });
+}
+
+async function removeMedicine(identifier) {
+  const rows = await supabase(`/rest/v1/medicine_materials?id=eq.${encodeURIComponent(identifier)}&select=id,image_path`);
+  if (!rows[0]) throw new Error("找不到這味藥材。");
+  await supabase(`/rest/v1/medicine_materials?id=eq.${encodeURIComponent(identifier)}`, { method: "DELETE", headers: { Prefer: "return=minimal" } });
+  if (rows[0].image_path) await supabase("/storage/v1/object/memories", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prefixes: [rows[0].image_path] }) });
+}
+
 async function saveProfile(body) {
   const content = String(body.content || "").trim();
   if (!content) throw new Error("介紹不能留空。");
@@ -158,13 +243,19 @@ exports.handler = async event => {
       if (query.type === "memories") return json(200, await readMemories());
       if (query.type === "profile") return json(200, await readProfile());
       if (query.type === "series") return json(200, await readSeries());
+      if (query.type === "medicines") return json(200, await readMedicines());
       if (query.type === "comments") return json(200, await readComments(query));
       return json(400, { error: "未知資料類型。" });
     }
     if (event.httpMethod !== "POST") return json(405, { error: "Method not allowed" });
-    if (query.action === "memory-image" || query.action === "series-cover") {
+    if (query.action === "memory-image" || query.action === "series-cover" || query.action === "medicine-image") {
       const user = currentUser(event);
       if (!user) return json(401, { error: "請先登入。" });
+      if (query.action === "medicine-image") {
+        if (user.role !== "admin") return json(403, { error: "只有管理員可以上傳藥材圖片。" });
+        await addMedicineImage(event, query);
+        return json(201, { ok: true });
+      }
       if (query.action === "memory-image") { await addMemoryImage(event, query, user); return json(201, { ok: true }); }
       await addSeriesCover(event, query, user);
       return json(201, { ok: true });
@@ -177,6 +268,10 @@ exports.handler = async event => {
       if (user.role !== "admin") return json(403, { error: "只有管理員可以修改自我介紹。" });
       return json(200, await saveProfile(body));
     }
+    if (["medicine", "update-medicine", "delete-medicine"].includes(body.action) && user.role !== "admin") return json(403, { error: "只有管理員可以整理中藥資料。" });
+    if (body.action === "medicine") return json(201, await addMedicine(body));
+    if (body.action === "update-medicine") { await updateMedicine(body); return json(200, { ok: true }); }
+    if (body.action === "delete-medicine") { await removeMedicine(String(body.id || "")); return json(200, { ok: true }); }
     if (body.action === "thought") { await addThought(body, user); return json(201, { ok: true }); }
     if (body.action === "memory") return json(201, await addMemory(body, user));
     if (body.action === "series") return json(201, await addSeries(body, user));
