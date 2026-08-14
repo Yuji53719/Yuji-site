@@ -14,6 +14,7 @@ let touchStartX = 0;
 let selectedFiles = [];
 let currentUser = null;
 let editingMemory = null;
+let previewUrls = [];
 
 function loadLocal() { try { return JSON.parse(localStorage.getItem(storageKey) || "[]"); } catch (_) { return []; } }
 function escapeHtml(value) { return String(value || "").replace(/[&<>'"]/g, character => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", "'":"&#39;", '"':"&quot;" })[character]); }
@@ -73,15 +74,40 @@ detailModal.addEventListener("touchend", event => { const delta = event.changedT
 const extractButton = document.getElementById("extract-memory");
 const fileInput = document.getElementById("memory-files");
 const editor = document.getElementById("memory-editor");
+const previewHost = document.getElementById("selected-previews");
 const today = new Date();
 document.getElementById("memory-date").value = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+
+function clearPreviewUrls() {
+  previewUrls.forEach(url => URL.revokeObjectURL(url));
+  previewUrls = [];
+}
+
+function renderPreviewImages(images) {
+  previewHost.innerHTML = images.map((image, index) => `<figure class="selected-preview"><img src="${image}" alt="已選擇照片 ${index + 1}"><span>${index + 1}</span></figure>`).join("");
+}
+
+function renderSelectedFiles(files) {
+  clearPreviewUrls();
+  previewUrls = files.map(file => URL.createObjectURL(file));
+  renderPreviewImages(previewUrls);
+}
+
+function resetNewMemoryFields() {
+  document.getElementById("memory-form").reset();
+  const current = new Date();
+  document.getElementById("memory-date").value = `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, "0")}-${String(current.getDate()).padStart(2, "0")}`;
+  document.getElementById("memory-message").textContent = "";
+}
 
 extractButton.addEventListener("click", () => fileInput.click());
 fileInput.addEventListener("change", () => {
   selectedFiles = [...fileInput.files];
   if (!selectedFiles.length) return;
   editingMemory = null;
+  resetNewMemoryFields();
   document.getElementById("selected-files").textContent = `已選擇 ${selectedFiles.length} 張照片`;
+  renderSelectedFiles(selectedFiles);
   document.getElementById("memory-form-title").textContent = "抽離記憶";
   editor.showModal();
 });
@@ -91,6 +117,8 @@ function openMemoryEditor(memory) {
   editingMemory = memory;
   document.getElementById("memory-form-title").textContent = "編輯記憶";
   document.getElementById("selected-files").textContent = "照片會保留原有排序。";
+  clearPreviewUrls();
+  renderPreviewImages(imagesOf(memory));
   document.getElementById("memory-date").value = memory.date || "";
   document.getElementById("memory-note").value = memory.note || "";
   document.getElementById("memory-story").value = memory.story || "";
@@ -108,10 +136,20 @@ document.getElementById("memory-form").addEventListener("submit", async event =>
     editor.close();
     fileInput.value = "";
     selectedFiles = [];
+    clearPreviewUrls();
+    previewHost.innerHTML = "";
     editingMemory = null;
     event.target.reset();
     await refresh();
   } catch (error) { message.textContent = `無法保存：${error.message}`; }
+});
+
+editor.addEventListener("close", () => {
+  clearPreviewUrls();
+  previewHost.innerHTML = "";
+  fileInput.value = "";
+  selectedFiles = [];
+  editingMemory = null;
 });
 
 getAuthState().then(({ user }) => { currentUser = user; if (user) extractButton.classList.add("is-admin"); render(); });

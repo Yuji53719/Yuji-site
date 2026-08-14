@@ -1,7 +1,7 @@
-const { adminAuthorId, currentUser, filePath, json, required, supabase, supabaseHeaders } = require("./_shared");
+const { adminAuthorId, currentUser, filePath, json, supabase, supabaseBaseUrl, supabaseHeaders } = require("./_shared");
 
 const parse = event => JSON.parse(event.body || "{}");
-const publicImageUrl = path => `${required("SUPABASE_URL")}/storage/v1/object/public/memories/${filePath(path)}`;
+const publicImageUrl = path => `${supabaseBaseUrl()}/storage/v1/object/public/memories/${filePath(path)}`;
 
 async function readThoughts() {
   const thoughts = await supabase("/rest/v1/thoughts?select=id,title,content,published_at,created_at,author_username,author_name&order=published_at.desc");
@@ -90,7 +90,7 @@ async function addSeriesCover(event, query, user) {
   if (user.role !== "admin" && posts[0].author_username !== user.username) throw new Error("你只能上傳自己的連載封面。 ");
   const path = `series/${postId}/cover-${Date.now()}-${filename}`;
   const bytes = Buffer.from(event.body || "", event.isBase64Encoded ? "base64" : "utf8");
-  const response = await fetch(`${required("SUPABASE_URL")}/storage/v1/object/memories/${filePath(path)}`, { method: "POST", headers: supabaseHeaders({ "Content-Type": event.headers["content-type"] || "application/octet-stream", "x-upsert": "false" }), body: bytes });
+  const response = await fetch(`${supabaseBaseUrl()}/storage/v1/object/memories/${filePath(path)}`, { method: "POST", headers: supabaseHeaders({ "Content-Type": event.headers["content-type"] || "application/octet-stream", "x-upsert": "false" }), body: bytes });
   if (!response.ok) throw new Error((await response.text()) || "封面上傳失敗。");
   await supabase(`/rest/v1/series_posts?id=eq.${encodeURIComponent(postId)}`, { method: "PATCH", headers: { "Content-Type": "application/json", Prefer: "return=minimal" }, body: JSON.stringify({ cover_path: path }) });
 }
@@ -105,7 +105,7 @@ async function addMemoryImage(event, query, user) {
   if (user.role !== "admin" && memories[0].author_username !== user.username) throw new Error("你只能上傳自己的記憶照片。");
   const path = `admin/${memoryId}/${position}-${Date.now()}-${filename}`;
   const bytes = Buffer.from(event.body || "", event.isBase64Encoded ? "base64" : "utf8");
-  const response = await fetch(`${required("SUPABASE_URL")}/storage/v1/object/memories/${filePath(path)}`, { method: "POST", headers: supabaseHeaders({ "Content-Type": event.headers["content-type"] || "application/octet-stream", "x-upsert": "false" }), body: bytes });
+  const response = await fetch(`${supabaseBaseUrl()}/storage/v1/object/memories/${filePath(path)}`, { method: "POST", headers: supabaseHeaders({ "Content-Type": event.headers["content-type"] || "application/octet-stream", "x-upsert": "false" }), body: bytes });
   if (!response.ok) throw new Error((await response.text()) || "圖片上傳失敗。");
   await supabase("/rest/v1/memory_images", { method: "POST", headers: { "Content-Type": "application/json", Prefer: "return=minimal" }, body: JSON.stringify({ memory_id: memoryId, storage_path: path, position }) });
 }

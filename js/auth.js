@@ -1,7 +1,7 @@
 const endpoint = new URL("/api/auth", window.location.origin).toString();
 
 function connectionError(error) {
-  if (window.location.protocol === "file:") return new Error("目前正以本機檔案預覽，無法使用登入服務。請從 Netlify 公開網址開啟網站後再登入。");
+  if (window.location.protocol === "file:") return new Error("目前正以本機檔案預覽，無法使用登入服務。請從 Vercel 公開網址開啟網站後再登入。");
   if (error instanceof TypeError) return new Error("無法連線至登入服務。請檢查網路連線，或稍後再試。");
   return error;
 }

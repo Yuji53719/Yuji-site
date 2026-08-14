@@ -1,7 +1,9 @@
 import "./font.js";
 import { createThought } from "./cloudData.js";
 import { requireAdmin } from "./auth.js";
-import { createRichTextEditor } from "../components/RichTextEditor.js";
+import { createRichTextEditor, richTextEditorStyles } from "../components/RichTextEditor.js";
+
+document.head.insertAdjacentHTML("beforeend", `<style id="thought-rich-editor-style">${richTextEditorStyles}.body-panel .rich-text-editor{gap:14px}.body-panel .rich-text-toolbar{margin-bottom:2px}.body-panel .rich-text-content{min-height:340px}</style>`);
 
 const allowed = await requireAdmin();
 if (allowed) {

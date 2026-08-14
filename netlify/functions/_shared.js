@@ -12,6 +12,15 @@ function required(name) {
   return value;
 }
 
+function supabaseBaseUrl() {
+  let value = required("SUPABASE_URL").trim().replace(/\/+$/, "");
+  value = value.replace(/\/(?:rest|auth|storage)\/v1$/i, "");
+  if (!/^https:\/\/[a-z0-9-]+\.supabase\.co$/i.test(value)) {
+    throw new Error("SUPABASE_URL 格式不正確，請填寫 https://專案代碼.supabase.co，不要包含 /rest/v1。");
+  }
+  return value;
+}
+
 function cookie(event, name) {
   const values = String(event.headers.cookie || "").split(";").map(value => value.trim());
   const matched = values.find(value => value.startsWith(`${name}=`));
@@ -85,10 +94,16 @@ function supabaseHeaders(extra = {}) {
 }
 
 async function supabase(path, options = {}) {
-  const response = await fetch(`${required("SUPABASE_URL")}${path}`, {
-    ...options,
-    headers: supabaseHeaders(options.headers || {})
-  });
+  let response;
+  try {
+    response = await fetch(`${supabaseBaseUrl()}${path}`, {
+      ...options,
+      headers: supabaseHeaders(options.headers || {})
+    });
+  } catch (error) {
+    console.error("Supabase request failed", error);
+    throw new Error("伺服器無法連線至 Supabase。請檢查 Vercel 的 SUPABASE_URL 是否為 https://專案代碼.supabase.co。 ");
+  }
   const text = await response.text();
   if (!response.ok) {
     let message = text;
@@ -150,4 +165,4 @@ function filePath(path) {
   return path.split("/").map(segment => encodeURIComponent(segment)).join("/");
 }
 
-module.exports = { adminAuthorId, adminCookie, authenticateAccount, cookie, createStoredAccount, currentUser, filePath, json, passwordHash, required, sessionCookie, storedAccounts, supabase, supabaseHeaders };
+module.exports = { adminAuthorId, adminCookie, authenticateAccount, cookie, createStoredAccount, currentUser, filePath, json, passwordHash, required, sessionCookie, storedAccounts, supabase, supabaseBaseUrl, supabaseHeaders };
